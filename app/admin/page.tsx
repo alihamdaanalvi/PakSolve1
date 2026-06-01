@@ -3,6 +3,17 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { deleteUser, inviteMentor, setProfileStatus, updateBadge } from "@/app/actions/admin";
 import { requireRole } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import type { Problem, Profile, Submission } from "@/lib/types";
+
+type AdminProblem = Problem & {
+  mentor: Pick<Profile, "name" | "email"> | null;
+  submissions: AdminSubmission[];
+};
+
+type AdminSubmission = Submission & {
+  problem: Pick<Problem, "title" | "max_points"> | null;
+  student: Pick<Profile, "name" | "email"> | null;
+};
 
 export default async function AdminDashboard({
   searchParams
@@ -11,12 +22,47 @@ export default async function AdminDashboard({
 }) {
   const { profile } = await requireRole("admin");
   const supabase = createSupabaseAdminClient();
-  const [{ data: users }, { data: problems }, { data: submissions }, { data: badges }] = await Promise.all([
+  const [{ data: users }, { data: rawProblems }, { data: rawSubmissions }, { data: badges }] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-    supabase.from("problems").select("*, profiles(name)").order("created_at", { ascending: false }),
-    supabase.from("submissions").select("*, problems(title), profiles(name)").order("created_at", { ascending: false }),
+    supabase.from("problems").select("*").order("created_at", { ascending: false }),
+    supabase.from("submissions").select("*").order("created_at", { ascending: false }),
     supabase.from("badges").select("*").order("points_threshold")
   ]);
+  const usersById = new Map((users ?? []).map((user) => [user.user_id, user]));
+  const problemsById = new Map((rawProblems ?? []).map((problem) => [problem.id, problem]));
+  const submissions: AdminSubmission[] = (rawSubmissions ?? []).map((submission) => ({
+    ...submission,
+    problem: problemsById.get(submission.problem_id)
+      ? {
+          title: problemsById.get(submission.problem_id)!.title,
+          max_points: problemsById.get(submission.problem_id)!.max_points
+        }
+      : null,
+    student: usersById.get(submission.student_id)
+      ? {
+          name: usersById.get(submission.student_id)!.name,
+          email: usersById.get(submission.student_id)!.email
+        }
+      : null
+  }));
+  const submissionsByProblem = new Map<string, AdminSubmission[]>();
+
+  for (const submission of submissions) {
+    const existing = submissionsByProblem.get(submission.problem_id) ?? [];
+    existing.push(submission);
+    submissionsByProblem.set(submission.problem_id, existing);
+  }
+
+  const problems: AdminProblem[] = (rawProblems ?? []).map((problem) => {
+    const mentor = usersById.get(problem.uploaded_by);
+
+    return {
+      ...problem,
+      mentor: mentor ? { name: mentor.name, email: mentor.email } : null,
+      submissions: submissionsByProblem.get(problem.id) ?? []
+    };
+  });
+  const gradedCount = submissions.filter((submission) => submission.status === "graded").length;
   const pendingStudents = users?.filter((user) => user.role === "student" && user.status === "pending") ?? [];
   const inviteLink = searchParams?.invite_link;
   const inviteEmail = searchParams?.invite_email;
@@ -57,7 +103,7 @@ export default async function AdminDashboard({
           ["Users", users?.length ?? 0],
           ["Problems", problems?.length ?? 0],
           ["Submissions", submissions?.length ?? 0],
-          ["Storage", "Supabase panel"]
+          ["Graded", gradedCount]
         ].map(([label, value]) => (
           <div key={label} className="surface p-4">
             <p className="text-sm text-slate-500">{label}</p>
@@ -151,34 +197,46 @@ export default async function AdminDashboard({
         <div className="border-b border-line p-4">
           <h2 className="font-semibold">Uploaded Problems</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-panel text-sm text-slate-500">
-              <tr>
-                <th className="table-cell">Problem</th>
-                <th className="table-cell">Mentor</th>
-                <th className="table-cell">Deadline</th>
-                <th className="table-cell">Points</th>
-                <th className="table-cell">File</th>
-              </tr>
-            </thead>
-            <tbody>
-              {problems?.map((problem) => (
-                <tr key={problem.id} className="border-t border-line">
-                  <td className="table-cell font-medium">{problem.title}</td>
-                  <td className="table-cell">{problem.profiles?.name ?? "Unknown"}</td>
-                  <td className="table-cell">{new Date(problem.deadline).toLocaleString()}</td>
-                  <td className="table-cell">{problem.max_points}</td>
-                  <td className="table-cell">{problem.file_url ? <a className="font-semibold text-sky-700" href={problem.file_url}>Download</a> : "-"}</td>
-                </tr>
-              ))}
-              {!problems?.length ? (
-                <tr>
-                  <td className="table-cell text-slate-500">No problems uploaded yet.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+        <div className="divide-y divide-line">
+          {problems.map((problem) => (
+            <article key={problem.id} className="p-4">
+              <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+                <div>
+                  <h3 className="text-lg font-bold">{problem.title}</h3>
+                  <p className="mt-1 text-sm text-slate-600">{problem.description}</p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Mentor: {problem.mentor?.name ?? "Unknown"} ({problem.mentor?.email ?? "No email"}) | Due {new Date(problem.deadline).toLocaleString()} | {problem.max_points} points
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="status-pill border-sky-200 bg-sky-50 text-sky-800">{problem.submissions.length} submissions</span>
+                  {problem.file_url ? <a className="btn-muted" href={problem.file_url}>Download</a> : null}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {problem.submissions.map((submission) => (
+                  <div key={submission.id} className="rounded-md border border-line bg-panel p-3 text-sm">
+                    <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
+                      <div>
+                        <p className="font-semibold">{submission.student?.name ?? "Student"}</p>
+                        <p className="text-xs text-slate-500">{submission.student?.email ?? "No email"} | Submitted {new Date(submission.created_at).toLocaleString()}</p>
+                      </div>
+                      <span className={submission.status === "graded" ? "status-pill border-emerald-200 bg-emerald-50 text-emerald-800" : "status-pill border-amber-200 bg-amber-50 text-amber-800"}>
+                        {submission.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-slate-700">
+                      Score: {submission.score ?? "-"}/{problem.max_points}
+                      {submission.feedback ? ` | Feedback: ${submission.feedback}` : ""}
+                    </p>
+                  </div>
+                ))}
+                {!problem.submissions.length ? <p className="rounded-md border border-dashed border-line p-3 text-sm text-slate-500">No submissions for this problem yet.</p> : null}
+              </div>
+            </article>
+          ))}
+          {!problems.length ? <p className="p-4 text-sm text-slate-500">No problems uploaded yet.</p> : null}
         </div>
       </section>
 
@@ -201,7 +259,8 @@ export default async function AdminDashboard({
           <div className="space-y-3">
             {submissions?.slice(0, 6).map((submission) => (
               <div key={submission.id} className="rounded-md border border-line bg-panel p-3 text-sm">
-                <p className="font-medium">{submission.profiles?.name ?? "Student"} submitted {submission.problems?.title ?? "a problem"}</p>
+                <p className="font-medium">{submission.student?.name ?? "Student"} submitted {submission.problem?.title ?? "a problem"}</p>
+                <p className="mt-1 text-slate-600">Score: {submission.score ?? "-"}/{submission.problem?.max_points ?? "-"}</p>
                 <p className="mt-1 capitalize text-slate-500">{submission.status} · {new Date(submission.created_at).toLocaleString()}</p>
               </div>
             ))}

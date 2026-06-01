@@ -67,9 +67,9 @@ export default async function MentorDashboard({
     submissions: submissionsByProblem.get(problem.id) ?? []
   }));
   const submissionCount = problems?.reduce((total, problem) => total + (problem.submissions?.length ?? 0), 0) ?? 0;
-  const pendingCount =
+  const gradedCount =
     problems?.reduce(
-      (total, problem) => total + (problem.submissions.filter((submission) => submission.status === "pending").length ?? 0),
+      (total, problem) => total + (problem.submissions.filter((submission) => submission.status === "graded").length ?? 0),
       0
     ) ?? 0;
   const error =
@@ -91,7 +91,7 @@ export default async function MentorDashboard({
           {[
             ["Problems", problems?.length ?? 0],
             ["Submissions", submissionCount],
-            ["Pending", pendingCount]
+            ["Graded", gradedCount]
           ].map(([label, value]) => (
             <div key={label} className="surface p-3">
               <p className="text-xs font-medium text-slate-500">{label}</p>
