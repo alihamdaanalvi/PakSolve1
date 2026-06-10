@@ -8,8 +8,9 @@
 
 body {
   margin: 0;
-  color: #16202a;
+  color: #102033;
   background: #eef3f8;
+  min-height: 100vh;
 }
 
 a {
@@ -24,7 +25,7 @@ select {
 }
 
 .form-field {
-  @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100;
+  @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100;
 }
 
 .btn {
@@ -32,11 +33,11 @@ select {
 }
 
 .btn-primary {
-  @apply btn bg-sky-600 text-white shadow-sm shadow-sky-900/10 hover:bg-sky-700;
+  @apply btn bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-900/20 hover:bg-cyan-400;
 }
 
 .btn-muted {
-  @apply btn border border-line bg-white text-ink shadow-sm shadow-slate-200/60 hover:border-sky-200 hover:bg-sky-50;
+  @apply btn border border-line bg-white text-ink shadow-sm shadow-slate-200/60 hover:border-cyan-200 hover:bg-cyan-50;
 }
 
 .table-cell {
@@ -44,13 +45,21 @@ select {
 }
 
 .surface {
-  @apply rounded-md border border-line bg-white shadow-sm shadow-slate-200/70;
+  @apply rounded-md border border-line bg-white/95 text-ink shadow-sm shadow-slate-950/10 backdrop-blur;
 }
 
 .eyebrow {
-  @apply text-xs font-semibold uppercase tracking-wide text-sky-700;
+  @apply text-xs font-semibold uppercase tracking-wide text-cyan-700;
 }
 
 .status-pill {
   @apply inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold;
+}
+
+.category-pill {
+  @apply inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700;
+}
+
+.batch-pill {
+  @apply inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-sm font-semibold text-cyan-800;
 }

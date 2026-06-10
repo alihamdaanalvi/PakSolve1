@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import type { ProfileStatus } from "@/lib/types";
+import type { AcademicBatch, ProfileStatus, Subject } from "@/lib/types";
 
 export async function inviteMentor(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
@@ -49,6 +49,22 @@ export async function setProfileStatus(formData: FormData) {
 
   await supabase.from("profiles").update({ status }).eq("user_id", userId);
   revalidatePath("/admin");
+}
+
+export async function updateStudentProfile(formData: FormData) {
+  const userId = String(formData.get("user_id"));
+  const name = String(formData.get("name") || "").trim();
+  const batch = String(formData.get("batch") || "basic") as AcademicBatch;
+  const subjects = formData.getAll("subjects").map(String).filter(Boolean) as Subject[];
+  const supabase = createSupabaseAdminClient();
+
+  await supabase
+    .from("profiles")
+    .update({ name, batch, subjects: subjects.length ? subjects : ["math"] })
+    .eq("user_id", userId)
+    .eq("role", "student");
+  revalidatePath("/admin");
+  revalidatePath("/student");
 }
 
 export async function deleteUser(formData: FormData) {

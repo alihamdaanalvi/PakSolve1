@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { isValidDocument, publicStorageUrl } from "@/lib/files";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import type { AcademicBatch, Subject } from "@/lib/types";
 
 export async function uploadProblem(formData: FormData) {
   const { user } = await requireRole("mentor");
@@ -15,6 +16,8 @@ export async function uploadProblem(formData: FormData) {
   }
 
   const supabase = createSupabaseAdminClient();
+  const subject = String(formData.get("subject") || "math") as Subject;
+  const batch = String(formData.get("batch") || "basic") as AcademicBatch;
   const path = `${user.id}/${crypto.randomUUID()}-${file.name}`;
   const { error: uploadError } = await supabase.storage.from("problems").upload(path, file, {
     contentType: file.type,
@@ -22,12 +25,14 @@ export async function uploadProblem(formData: FormData) {
   });
 
   if (uploadError) {
-    redirect("/mentor?error=upload-failed");
+    redirect(`/mentor?error=${encodeURIComponent(uploadError.message)}`);
   }
 
   const { error: insertError } = await supabase.from("problems").insert({
     title: String(formData.get("title")),
     description: String(formData.get("description")),
+    subject,
+    batch,
     deadline: String(formData.get("deadline")),
     max_points: Number(formData.get("max_points")),
     uploaded_by: user.id,
@@ -35,7 +40,7 @@ export async function uploadProblem(formData: FormData) {
   });
 
   if (insertError) {
-    redirect("/mentor?error=problem-failed");
+    redirect(`/mentor?error=${encodeURIComponent(insertError.message)}`);
   }
 
   revalidatePath("/mentor");

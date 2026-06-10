@@ -1,15 +1,18 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { AcademicBatch, Subject } from "@/lib/types";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function registerStudent(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const name = String(formData.get("name") || "").trim();
+  const batch = String(formData.get("batch") || "basic") as AcademicBatch;
+  const subjects = formData.getAll("subjects").map(String).filter(Boolean) as Subject[];
 
-  if (!email || !password || !name) {
-    return { error: "Name, email, and password are required." };
+  if (!email || !password || !name || !subjects.length) {
+    return { error: "Name, email, password, batch, and at least one subject are required." };
   }
 
   if (password.length < 6) {
@@ -21,7 +24,7 @@ export async function registerStudent(formData: FormData) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { name, role: "student" }
+    user_metadata: { name, role: "student", batch, subjects }
   });
 
   if (error) {
@@ -39,7 +42,9 @@ export async function registerStudent(formData: FormData) {
     role: "student",
     status: "pending",
     total_points: 0,
-    badge_level: "Beginner"
+    badge_level: "Beginner",
+    batch,
+    subjects
   });
 
   return { success: "Registration submitted. An admin must approve your account before you can sign in." };

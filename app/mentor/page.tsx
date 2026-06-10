@@ -3,7 +3,9 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { FileInput } from "@/components/FileInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireRole } from "@/lib/auth";
+import { BATCHES, SUBJECTS, formatBatch, formatSubject, normalizeBatch } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import type { AcademicBatch, Subject } from "@/lib/types";
 import { PlusCircle } from "lucide-react";
 
 type MentorSubmission = {
@@ -23,6 +25,8 @@ type MentorProblem = {
   title: string;
   description: string;
   file_url: string | null;
+  subject: Subject;
+  batch: AcademicBatch;
   deadline: string;
   max_points: number;
   created_at: string;
@@ -64,6 +68,8 @@ export default async function MentorDashboard({
 
   const problems: MentorProblem[] = (rawProblems ?? []).map((problem) => ({
     ...problem,
+    subject: problem.subject ?? "math",
+    batch: normalizeBatch(problem.batch),
     submissions: submissionsByProblem.get(problem.id) ?? []
   }));
   const submissionCount = problems?.reduce((total, problem) => total + (problem.submissions?.length ?? 0), 0) ?? 0;
@@ -76,7 +82,7 @@ export default async function MentorDashboard({
     searchParams?.error === "invalid-file"
       ? "Upload a PDF, DOC, or DOCX file up to 10MB."
       : searchParams?.error
-        ? "The problem could not be uploaded. Please try again."
+        ? `The problem could not be uploaded: ${searchParams.error}`
         : null;
 
   return (
@@ -123,6 +129,22 @@ export default async function MentorDashboard({
             <input className="form-field mt-1" min={1} name="max_points" required type="number" />
           </label>
           <label className="block text-sm font-medium">
+            Subject
+            <select className="form-field mt-1" name="subject" required>
+              {SUBJECTS.map((subject) => (
+                <option key={subject.value} value={subject.value}>{subject.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
+            Batch difficulty
+            <select className="form-field mt-1" name="batch" required>
+              {BATCHES.map((batch) => (
+                <option key={batch.value} value={batch.value}>{batch.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
             Problem file
             <FileInput name="file" />
           </label>
@@ -136,15 +158,31 @@ export default async function MentorDashboard({
         </form>
       </details>
 
-      <div className="space-y-4">
-        {problems?.map((problem) => (
-          <section key={problem.id} className="surface p-5">
+      <div className="grid gap-6 xl:grid-cols-2">
+        {SUBJECTS.map((subject) => {
+          const subjectProblems = problems.filter((problem) => problem.subject === subject.value);
+
+          return (
+          <section key={subject.value} className="surface overflow-hidden">
+            <div className="border-b border-line bg-white p-4">
+              <h2 className="text-lg font-bold">{subject.label}</h2>
+              <p className="text-sm text-slate-500">{subjectProblems.length} uploaded problems</p>
+            </div>
+            <div className="divide-y divide-line">
+              {subjectProblems.map((problem) => (
+          <article key={problem.id} className="p-5">
             <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row">
               <div>
                 <h2 className="text-xl font-bold">{problem.title}</h2>
-                <p className="mt-1 text-sm text-slate-500">Deadline {new Date(problem.deadline).toLocaleString()} | {problem.max_points} points</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="batch-pill">{formatBatch(problem.batch)}</span>
+                  <span className="category-pill">{formatSubject(problem.subject)}</span>
+                  <span className="text-sm text-slate-500">Deadline {new Date(problem.deadline).toLocaleString()} | {problem.max_points} points</span>
+                </div>
               </div>
-              {problem.file_url ? <a className="btn-muted" href={problem.file_url}>Download</a> : null}
+              <div className="flex items-center gap-2">
+                {problem.file_url ? <a className="btn-muted" href={problem.file_url}>Download</a> : null}
+              </div>
             </div>
             <p className="mb-4 text-sm leading-6 text-slate-700">{problem.description}</p>
             <div className="space-y-3">
@@ -173,9 +211,13 @@ export default async function MentorDashboard({
               ))}
               {!problem.submissions?.length ? <p className="text-sm text-slate-500">No submissions yet.</p> : null}
             </div>
+          </article>
+              ))}
+              {!subjectProblems.length ? <div className="p-5 text-sm text-slate-600">No {subject.label.toLowerCase()} problems yet.</div> : null}
+            </div>
           </section>
-        ))}
-        {!problems?.length ? <div className="surface p-6 text-sm text-slate-600">No problems uploaded yet. Use Submit Problem to publish the first one.</div> : null}
+          );
+        })}
       </div>
     </DashboardShell>
   );

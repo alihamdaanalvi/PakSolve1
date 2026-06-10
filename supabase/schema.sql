@@ -15,6 +15,16 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
+do $$ begin
+  create type public.academic_batch as enum ('basic', 'intermediate', 'advanced');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.subject_area as enum ('physics', 'math');
+exception when duplicate_object then null;
+end $$;
+
 create table if not exists public.profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references auth.users(id) on delete cascade,
@@ -24,6 +34,8 @@ create table if not exists public.profiles (
   status public.profile_status not null default 'pending',
   total_points integer not null default 0 check (total_points >= 0),
   badge_level text not null default 'Beginner',
+  batch public.academic_batch not null default 'basic',
+  subjects public.subject_area[] not null default array['math']::public.subject_area[],
   avatar_url text,
   created_at timestamptz not null default now()
 );
@@ -34,10 +46,20 @@ create table if not exists public.problems (
   description text not null,
   file_url text,
   uploaded_by uuid not null references auth.users(id) on delete cascade,
+  subject public.subject_area not null default 'math',
+  batch public.academic_batch not null default 'basic',
   deadline timestamptz not null,
   max_points integer not null check (max_points > 0),
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists batch public.academic_batch not null default 'basic',
+  add column if not exists subjects public.subject_area[] not null default array['math']::public.subject_area[];
+
+alter table public.problems
+  add column if not exists subject public.subject_area not null default 'math',
+  add column if not exists batch public.academic_batch not null default 'basic';
 
 create table if not exists public.submissions (
   id uuid primary key default gen_random_uuid(),
@@ -113,19 +135,27 @@ as $$
 declare
   requested_role public.user_role := coalesce((new.raw_user_meta_data->>'role')::public.user_role, 'student');
 begin
-  insert into public.profiles (user_id, name, email, role, status)
+  insert into public.profiles (user_id, name, email, role, status, batch, subjects)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     new.email,
     requested_role,
-    case when requested_role = 'student' then 'pending'::public.profile_status else 'active'::public.profile_status end
+    case when requested_role = 'student' then 'pending'::public.profile_status else 'active'::public.profile_status end,
+    coalesce((new.raw_user_meta_data->>'batch')::public.academic_batch, 'basic'::public.academic_batch),
+    case
+      when jsonb_typeof(new.raw_user_meta_data->'subjects') = 'array'
+      then array(select jsonb_array_elements_text(new.raw_user_meta_data->'subjects')::public.subject_area)
+      else array['math']::public.subject_area[]
+    end
   )
   on conflict (user_id) do update set
     email = excluded.email,
     name = excluded.name,
     role = excluded.role,
-    status = excluded.status;
+    status = excluded.status,
+    batch = excluded.batch,
+    subjects = excluded.subjects;
   return new;
 end;
 $$;

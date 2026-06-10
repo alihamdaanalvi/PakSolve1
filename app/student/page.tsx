@@ -3,6 +3,7 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { FileInput } from "@/components/FileInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireRole } from "@/lib/auth";
+import { SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjects } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { CheckCircle2 } from "lucide-react";
 
@@ -13,8 +14,10 @@ export default async function StudentDashboard({
 }) {
   const { user, profile } = await requireRole("student");
   const supabase = createSupabaseAdminClient();
+  const assignedBatch = normalizeBatch(profile.batch);
+  const assignedSubjects = normalizeSubjects(profile.subjects);
   const [{ data: problems }, { data: submissions }] = await Promise.all([
-    supabase.from("problems").select("*").order("deadline"),
+    supabase.from("problems").select("*").eq("batch", assignedBatch).in("subject", assignedSubjects).order("deadline"),
     supabase.from("submissions").select("*, problems(title,max_points)").eq("student_id", user.id).order("created_at", { ascending: false })
   ]);
   const latestSubmissionByProblem = new Map<string, NonNullable<typeof submissions>[number]>();
@@ -44,7 +47,12 @@ export default async function StudentDashboard({
         <div>
           <p className="eyebrow">Student workspace</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Problems to solve</h1>
-          <p className="mt-2 text-sm text-slate-600">Submit once, then track review status and feedback here.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="batch-pill">{formatBatch(assignedBatch)}</span>
+            {assignedSubjects.map((subject) => (
+              <span className="category-pill" key={subject}>{formatSubject(subject)}</span>
+            ))}
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-3 sm:min-w-[420px]">
           {[
@@ -63,17 +71,31 @@ export default async function StudentDashboard({
       {notice ? <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-950">{notice}</div> : null}
       {error ? <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-950">{error}</div> : null}
 
-      <section className="mb-8 grid gap-4 xl:grid-cols-2">
-        {problems?.map((problem) => {
+      <section className="mb-8 grid gap-6 xl:grid-cols-2">
+        {SUBJECTS.filter((subject) => assignedSubjects.includes(subject.value)).map((subject) => {
+          const subjectProblems = (problems ?? []).filter((problem) => problem.subject === subject.value);
+
+          return (
+          <div key={subject.value} className="surface overflow-hidden">
+            <div className="border-b border-line bg-white p-4">
+              <h2 className="text-lg font-bold">{subject.label}</h2>
+              <p className="text-sm text-slate-500">{subjectProblems.length} {formatBatch(assignedBatch).toLowerCase()} problems</p>
+            </div>
+            <div className="grid gap-0 divide-y divide-line">
+        {subjectProblems.map((problem) => {
           const submission = latestSubmissionByProblem.get(problem.id);
 
           return (
-            <article key={problem.id} className="surface overflow-hidden">
+            <article key={problem.id} className="overflow-hidden">
             <div className="border-b border-line bg-gradient-to-r from-white to-sky-50 p-5">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <div>
                   <h2 className="text-xl font-bold">{problem.title}</h2>
-                  <p className="mt-1 text-sm text-slate-600">Due {new Date(problem.deadline).toLocaleString()} | {problem.max_points} points</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="category-pill">{formatSubject(problem.subject)}</span>
+                    <span className="batch-pill">{formatBatch(problem.batch)}</span>
+                    <span className="text-sm text-slate-600">Due {new Date(problem.deadline).toLocaleString()} | {problem.max_points} points</span>
+                  </div>
                 </div>
                 {submission ? (
                   <span className={submission.status === "graded" ? "status-pill border-emerald-200 bg-emerald-50 text-emerald-800" : "status-pill border-amber-200 bg-amber-50 text-amber-800"}>
@@ -109,6 +131,11 @@ export default async function StudentDashboard({
               </div>
             </div>
             </article>
+          );
+        })}
+        {!subjectProblems.length ? <p className="p-5 text-sm text-slate-500">No {subject.label.toLowerCase()} problems assigned yet.</p> : null}
+            </div>
+          </div>
           );
         })}
       </section>

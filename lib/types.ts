@@ -1,6 +1,8 @@
 export type Role = "admin" | "mentor" | "student";
 export type ProfileStatus = "pending" | "active" | "rejected";
 export type SubmissionStatus = "pending" | "graded";
+export type AcademicBatch = "basic" | "intermediate" | "advanced";
+export type Subject = "physics" | "math";
 
 export type Profile = {
   id: string;
@@ -11,6 +13,8 @@ export type Profile = {
   status: ProfileStatus;
   total_points: number;
   badge_level: string;
+  batch: AcademicBatch;
+  subjects: Subject[];
   avatar_url: string | null;
   created_at: string;
 };
@@ -21,6 +25,8 @@ export type Problem = {
   description: string;
   file_url: string | null;
   uploaded_by: string;
+  subject: Subject;
+  batch: AcademicBatch;
   deadline: string;
   max_points: number;
   created_at: string;

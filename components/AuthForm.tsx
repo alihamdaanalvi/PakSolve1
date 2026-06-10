@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { registerStudent } from "@/app/actions/auth";
+import { BATCHES, SUBJECTS } from "@/lib/academics";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function AuthForm({ mode, status }: { mode: "login" | "signup"; status?: string }) {
@@ -61,10 +62,31 @@ export function AuthForm({ mode, status }: { mode: "login" | "signup"; status?: 
       </p>
       {message ? <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{message}</div> : null}
       {mode === "signup" ? (
-        <label className="mb-4 block text-sm font-medium">
-          Name
-          <input className="form-field mt-1" name="name" required />
-        </label>
+        <>
+          <label className="mb-4 block text-sm font-medium">
+            Name
+            <input className="form-field mt-1" name="name" required />
+          </label>
+          <label className="mb-4 block text-sm font-medium">
+            Batch
+            <select className="form-field mt-1" name="batch" required>
+              {BATCHES.map((batch) => (
+                <option key={batch.value} value={batch.value}>{batch.label}</option>
+              ))}
+            </select>
+          </label>
+          <fieldset className="mb-4">
+            <legend className="mb-2 text-sm font-medium">Subjects</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {SUBJECTS.map((subject) => (
+                <label key={subject.value} className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-sm font-medium">
+                  <input className="h-4 w-4 accent-sky-700" name="subjects" type="checkbox" value={subject.value} defaultChecked={subject.value === "math"} />
+                  {subject.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </>
       ) : null}
       <label className="mb-4 block text-sm font-medium">
         Email

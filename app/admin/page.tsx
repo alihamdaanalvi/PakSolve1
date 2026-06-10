@@ -1,9 +1,11 @@
 import { DashboardShell } from "@/components/DashboardShell";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deleteUser, inviteMentor, setProfileStatus, updateBadge } from "@/app/actions/admin";
+import { deleteUser, inviteMentor, setProfileStatus, updateBadge, updateStudentProfile } from "@/app/actions/admin";
 import { requireRole } from "@/lib/auth";
+import { BATCHES, SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjects } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import type { Problem, Profile, Submission } from "@/lib/types";
+import type { Problem, Profile, Submission, Subject } from "@/lib/types";
+import { Pencil } from "lucide-react";
 
 type AdminProblem = Problem & {
   mentor: Pick<Profile, "name" | "email"> | null;
@@ -14,6 +16,47 @@ type AdminSubmission = Submission & {
   problem: Pick<Problem, "title" | "max_points"> | null;
   student: Pick<Profile, "name" | "email"> | null;
 };
+
+function StudentEditPanel({ user }: { user: Profile }) {
+  const batch = normalizeBatch(user.batch);
+  const subjects = normalizeSubjects(user.subjects);
+
+  return (
+    <details className="group">
+      <summary className="btn-muted w-fit cursor-pointer list-none">
+        <Pencil className="h-4 w-4" />
+        Edit
+      </summary>
+      <form action={updateStudentProfile} className="mt-3 grid min-w-[320px] gap-2 rounded-md border border-line bg-panel p-3">
+        <input name="user_id" type="hidden" value={user.user_id} />
+        <label className="text-xs font-semibold text-slate-600">
+          Name
+          <input className="form-field mt-1" name="name" required defaultValue={user.name} />
+        </label>
+        <label className="text-xs font-semibold text-slate-600">
+          Batch
+          <select className="form-field mt-1" name="batch" defaultValue={batch}>
+            {BATCHES.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
+          </select>
+        </label>
+        <fieldset>
+          <legend className="mb-2 text-xs font-semibold text-slate-600">Subjects</legend>
+          <div className="flex gap-3">
+            {SUBJECTS.map((subject) => (
+              <label key={subject.value} className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                <input name="subjects" type="checkbox" value={subject.value} defaultChecked={subjects.includes(subject.value as Subject)} />
+                {subject.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <SubmitButton variant="muted">Save Changes</SubmitButton>
+      </form>
+    </details>
+  );
+}
 
 export default async function AdminDashboard({
   searchParams
@@ -121,7 +164,15 @@ export default async function AdminDashboard({
             <tbody>
               {pendingStudents.map((user) => (
                 <tr key={user.id} className="border-b border-line last:border-0">
-                  <td className="table-cell font-medium">{user.name}</td>
+                  <td className="table-cell">
+                    <p className="font-medium">{user.name}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="batch-pill">{formatBatch(normalizeBatch(user.batch))}</span>
+                      {normalizeSubjects(user.subjects).map((subject) => (
+                        <span className="category-pill" key={subject}>{formatSubject(subject)}</span>
+                      ))}
+                    </div>
+                  </td>
                   <td className="table-cell">{user.email}</td>
                   <td className="table-cell">
                     <div className="flex gap-2">
@@ -136,6 +187,9 @@ export default async function AdminDashboard({
                         <SubmitButton variant="muted">Reject</SubmitButton>
                       </form>
                     </div>
+                  </td>
+                  <td className="table-cell">
+                    <StudentEditPanel user={user} />
                   </td>
                 </tr>
               ))}
@@ -160,34 +214,54 @@ export default async function AdminDashboard({
                 <th className="table-cell">Name</th>
                 <th className="table-cell">Role</th>
                 <th className="table-cell">Status</th>
+                <th className="table-cell">Batch</th>
+                <th className="table-cell">Subjects</th>
                 <th className="table-cell">Points</th>
                 <th className="table-cell">Joined</th>
                 <th className="table-cell">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users?.map((user) => (
-                <tr key={user.id} className="border-t border-line">
-                  <td className="table-cell">{user.name}</td>
-                  <td className="table-cell capitalize">{user.role}</td>
-                  <td className="table-cell capitalize">{user.status}</td>
-                  <td className="table-cell">{user.total_points}</td>
-                  <td className="table-cell">{new Date(user.created_at).toLocaleDateString()}</td>
-                  <td className="table-cell">
-                    <div className="flex gap-2">
-                      <form action={setProfileStatus}>
-                        <input name="user_id" type="hidden" value={user.user_id} />
-                        <input name="status" type="hidden" value={user.status === "active" ? "rejected" : "active"} />
-                        <SubmitButton variant="muted">{user.status === "active" ? "Deactivate" : "Activate"}</SubmitButton>
-                      </form>
-                      <form action={deleteUser}>
-                        <input name="user_id" type="hidden" value={user.user_id} />
-                        <SubmitButton variant="muted">Delete</SubmitButton>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {users?.map((user) => {
+                const studentBatch = normalizeBatch(user.batch);
+                const studentSubjects = normalizeSubjects(user.subjects);
+
+                return (
+                  <tr key={user.id} className="border-t border-line">
+                    <td className="table-cell">{user.name}</td>
+                    <td className="table-cell capitalize">{user.role}</td>
+                    <td className="table-cell capitalize">{user.status}</td>
+                    <td className="table-cell">
+                      {user.role === "student" ? <span className="batch-pill">{formatBatch(studentBatch)}</span> : "-"}
+                    </td>
+                    <td className="table-cell">
+                      {user.role === "student" ? (
+                        <div className="flex flex-wrap gap-2">
+                          {studentSubjects.map((subject) => (
+                            <span className="category-pill" key={subject}>{formatSubject(subject)}</span>
+                          ))}
+                        </div>
+                      ) : "-"}
+                    </td>
+                    <td className="table-cell">{user.total_points}</td>
+                    <td className="table-cell">{new Date(user.created_at).toLocaleDateString()}</td>
+                    <td className="table-cell">
+                      <div className="flex flex-wrap gap-2">
+                        {user.role === "student" ? <StudentEditPanel user={user} /> : null}
+                        <form action={setProfileStatus}>
+                          <input name="user_id" type="hidden" value={user.user_id} />
+                          <input name="status" type="hidden" value={user.status === "active" ? "rejected" : "active"} />
+                          <SubmitButton variant="muted">{user.status === "active" ? "Deactivate" : "Activate"}</SubmitButton>
+                        </form>
+                        <form action={deleteUser}>
+                          <input name="user_id" type="hidden" value={user.user_id} />
+                          <SubmitButton variant="muted">Delete</SubmitButton>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -207,6 +281,10 @@ export default async function AdminDashboard({
                   <p className="mt-2 text-xs text-slate-500">
                     Mentor: {problem.mentor?.name ?? "Unknown"} ({problem.mentor?.email ?? "No email"}) | Due {new Date(problem.deadline).toLocaleString()} | {problem.max_points} points
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="category-pill">{formatSubject(problem.subject ?? "math")}</span>
+                    <span className="batch-pill">{formatBatch(normalizeBatch(problem.batch))}</span>
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="status-pill border-sky-200 bg-sky-50 text-sky-800">{problem.submissions.length} submissions</span>
