@@ -13,6 +13,7 @@ type MentorSubmission = {
   problem_id: string;
   student_id: string;
   file_url: string;
+  r2_key: string;
   status: string;
   score: number | null;
   feedback: string | null;
@@ -80,7 +81,7 @@ export default async function MentorDashboard({
     ) ?? 0;
   const error =
     searchParams?.error === "invalid-file"
-      ? "Upload a PDF, DOC, or DOCX file up to 10MB."
+      ? "Upload a PDF file up to 10MB."
       : searchParams?.error
         ? `The problem could not be uploaded: ${searchParams.error}`
         : null;
@@ -181,7 +182,7 @@ export default async function MentorDashboard({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {problem.file_url ? <a className="btn-muted" href={problem.file_url}>Download</a> : null}
+                {problem.file_url ? <a className="btn-muted" href={`/api/download/problems?key=${encodeURIComponent(problem.file_url)}`}>Download</a> : null}
               </div>
             </div>
             <p className="mb-4 text-sm leading-6 text-slate-700">{problem.description}</p>
@@ -193,7 +194,7 @@ export default async function MentorDashboard({
                       <p className="text-sm font-semibold">{submission.student?.name ?? "Student"}</p>
                       <p className="text-xs text-slate-500">{submission.student?.email ?? "No email"} | Submitted {new Date(submission.created_at).toLocaleString()}</p>
                     </div>
-                    <a className="btn-muted" href={`/api/download/submissions?path=${encodeURIComponent(submission.file_url)}`}>Download Submission</a>
+                    <a className="btn-muted" href={`/api/download/submissions?key=${encodeURIComponent(submission.r2_key ?? submission.file_url)}`}>Download Submission</a>
                   </div>
                   {submission.status === "graded" ? (
                     <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">

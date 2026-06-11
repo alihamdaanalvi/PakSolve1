@@ -37,6 +37,13 @@ export type Submission = {
   problem_id: string;
   student_id: string;
   file_url: string;
+  r2_key: string;
+  original_filename: string;
+  file_size: number;
+  uploaded_at: string;
+  archived: boolean;
+  archived_at: string | null;
+  google_drive_file_id: string | null;
   status: SubmissionStatus;
   score: number | null;
   feedback: string | null;

@@ -5,7 +5,6 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { requireRole } from "@/lib/auth";
 import { SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjects } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import { CheckCircle2 } from "lucide-react";
 
 export default async function StudentDashboard({
   searchParams
@@ -30,13 +29,13 @@ export default async function StudentDashboard({
   const gradedCount = (submissions ?? []).filter((submission) => submission.status === "graded").length;
   const notice =
     searchParams?.submitted
-      ? "Solution submitted. It is now waiting for mentor review."
+      ? "Solution submitted. Your latest upload is waiting for mentor review."
       : searchParams?.notice === "already-submitted"
         ? "You already submitted this problem. Your dashboard now shows its status."
         : null;
   const error =
     searchParams?.error === "invalid-file"
-      ? "Upload a PDF, DOC, or DOCX file up to 10MB."
+      ? "Upload a PDF file up to 10MB."
       : searchParams?.error
         ? "The submission could not be saved. Please try again."
         : null;
@@ -109,17 +108,18 @@ export default async function StudentDashboard({
             <div className="p-5">
               <p className="mb-4 text-sm leading-6 text-slate-700">{problem.description}</p>
               <div className="flex flex-col gap-3">
-                {problem.file_url ? <a className="btn-muted w-fit" href={problem.file_url}>Download Problem</a> : null}
+                {problem.file_url ? <a className="btn-muted w-fit" href={`/api/download/problems?key=${encodeURIComponent(problem.file_url)}`}>Download Problem</a> : null}
                 {submission ? (
                   <div className="grid gap-3">
-                    <button className="btn bg-emerald-600 text-white shadow-sm shadow-emerald-900/10" disabled type="button">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Submitted
-                    </button>
                     <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
                       Submitted {new Date(submission.created_at).toLocaleString()}
                       {submission.status === "graded" ? <span className="ml-2 font-semibold">Score: {submission.score ?? 0}/{problem.max_points}</span> : <span className="ml-2 font-semibold">Waiting for grading</span>}
                     </div>
+                    <form action={submitSolution} className="grid gap-2">
+                      <input name="problem_id" type="hidden" value={problem.id} />
+                      <FileInput name="file" />
+                      <SubmitButton>Replace Solution</SubmitButton>
+                    </form>
                   </div>
                 ) : (
                   <form action={submitSolution} className="grid gap-2">

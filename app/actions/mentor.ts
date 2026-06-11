@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
-import { isValidDocument, publicStorageUrl } from "@/lib/files";
+import { isValidPdf } from "@/lib/files";
+import { deleteFileFromR2, uploadFileToR2 } from "@/lib/r2";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { AcademicBatch, Subject } from "@/lib/types";
 
@@ -11,21 +12,20 @@ export async function uploadProblem(formData: FormData) {
   const { user } = await requireRole("mentor");
   const file = formData.get("file") as File;
 
-  if (!file || !isValidDocument(file)) {
+  if (!file || !isValidPdf(file)) {
     redirect("/mentor?error=invalid-file");
   }
 
   const supabase = createSupabaseAdminClient();
   const subject = String(formData.get("subject") || "math") as Subject;
   const batch = String(formData.get("batch") || "basic") as AcademicBatch;
-  const path = `${user.id}/${crypto.randomUUID()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from("problems").upload(path, file, {
-    contentType: file.type,
-    upsert: false
-  });
+  const r2Key = `problems/${user.id}/${crypto.randomUUID()}.pdf`;
 
-  if (uploadError) {
-    redirect(`/mentor?error=${encodeURIComponent(uploadError.message)}`);
+  try {
+    await uploadFileToR2({ key: r2Key, file });
+  } catch (error) {
+    console.error(error);
+    redirect("/mentor?error=upload-failed");
   }
 
   const { error: insertError } = await supabase.from("problems").insert({
@@ -36,10 +36,11 @@ export async function uploadProblem(formData: FormData) {
     deadline: String(formData.get("deadline")),
     max_points: Number(formData.get("max_points")),
     uploaded_by: user.id,
-    file_url: publicStorageUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, "problems", path)
+    file_url: r2Key
   });
 
   if (insertError) {
+    await deleteFileFromR2(r2Key).catch((error) => console.error(error));
     redirect(`/mentor?error=${encodeURIComponent(insertError.message)}`);
   }
 

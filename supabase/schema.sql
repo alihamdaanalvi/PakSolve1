@@ -66,6 +66,13 @@ create table if not exists public.submissions (
   problem_id uuid not null references public.problems(id) on delete cascade,
   student_id uuid not null references auth.users(id) on delete cascade,
   file_url text not null,
+  r2_key text not null,
+  original_filename text not null,
+  file_size integer not null check (file_size > 0 and file_size <= 10485760),
+  uploaded_at timestamptz not null default now(),
+  archived boolean not null default false,
+  archived_at timestamptz,
+  google_drive_file_id text,
   status public.submission_status not null default 'pending',
   score integer check (score >= 0),
   feedback text,
@@ -73,6 +80,35 @@ create table if not exists public.submissions (
   graded_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.submissions
+  add column if not exists r2_key text,
+  add column if not exists original_filename text,
+  add column if not exists file_size integer,
+  add column if not exists uploaded_at timestamptz,
+  add column if not exists archived boolean not null default false,
+  add column if not exists archived_at timestamptz,
+  add column if not exists google_drive_file_id text;
+
+update public.submissions
+set
+  r2_key = coalesce(r2_key, file_url),
+  original_filename = coalesce(original_filename, 'submission.pdf'),
+  file_size = coalesce(file_size, 1),
+  uploaded_at = coalesce(uploaded_at, created_at),
+  archived = coalesce(archived, false);
+
+alter table public.submissions
+  alter column r2_key set not null,
+  alter column original_filename set not null,
+  alter column file_size set not null,
+  alter column uploaded_at set not null;
+
+do $$ begin
+  alter table public.submissions
+    add constraint submissions_file_size_limit check (file_size > 0 and file_size <= 10485760);
+exception when duplicate_object then null;
+end $$;
 
 delete from public.submissions duplicate
 where exists (
@@ -267,43 +303,3 @@ create policy "badges readable by authenticated users"
 on public.badges for select
 to authenticated
 using (true);
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values
-  ('problems', 'problems', true, 10485760, array[
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ]),
-  ('submissions', 'submissions', false, 10485760, array[
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ])
-on conflict (id) do update set
-  file_size_limit = excluded.file_size_limit,
-  allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists "problem files public read" on storage.objects;
-create policy "problem files public read"
-on storage.objects for select
-using (bucket_id = 'problems');
-
-drop policy if exists "mentors upload problem files" on storage.objects;
-create policy "mentors upload problem files"
-on storage.objects for insert
-to authenticated
-with check (
-  bucket_id = 'problems'
-  and exists (select 1 from public.profiles where user_id = auth.uid() and role = 'mentor' and status = 'active')
-);
-
-drop policy if exists "students upload submission files" on storage.objects;
-create policy "students upload submission files"
-on storage.objects for insert
-to authenticated
-with check (
-  bucket_id = 'submissions'
-  and owner = auth.uid()
-  and exists (select 1 from public.profiles where user_id = auth.uid() and role = 'student' and status = 'active')
-);

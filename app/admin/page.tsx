@@ -288,7 +288,7 @@ export default async function AdminDashboard({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="status-pill border-sky-200 bg-sky-50 text-sky-800">{problem.submissions.length} submissions</span>
-                  {problem.file_url ? <a className="btn-muted" href={problem.file_url}>Download</a> : null}
+                  {problem.file_url ? <a className="btn-muted" href={`/api/download/problems?key=${encodeURIComponent(problem.file_url)}`}>Download</a> : null}
                 </div>
               </div>
 
