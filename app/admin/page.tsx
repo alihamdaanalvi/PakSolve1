@@ -1,6 +1,14 @@
 import { DashboardShell } from "@/components/DashboardShell";
 import { SubmitButton } from "@/components/SubmitButton";
-import { deleteUser, inviteMentor, setProfileStatus, updateBadge, updateStudentProfile } from "@/app/actions/admin";
+import {
+  deleteProblem,
+  deleteSubmission,
+  deleteUser,
+  inviteMentor,
+  setProfileStatus,
+  updateBadge,
+  updateStudentProfile
+} from "@/app/actions/admin";
 import { requireRole } from "@/lib/auth";
 import { BATCHES, SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjects } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -61,7 +69,7 @@ function StudentEditPanel({ user }: { user: Profile }) {
 export default async function AdminDashboard({
   searchParams
 }: {
-  searchParams?: { invite_link?: string; invite_email?: string; invite_error?: string };
+  searchParams?: { invite_link?: string; invite_email?: string; invite_error?: string; delete_error?: string };
 }) {
   const { profile } = await requireRole("admin");
   const supabase = createSupabaseAdminClient();
@@ -138,6 +146,11 @@ export default async function AdminDashboard({
       {inviteError ? (
         <section className="mb-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
           {inviteError}
+        </section>
+      ) : null}
+      {searchParams?.delete_error ? (
+        <section className="mb-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          Delete failed: {searchParams.delete_error}
         </section>
       ) : null}
 
@@ -289,6 +302,10 @@ export default async function AdminDashboard({
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="status-pill border-sky-200 bg-sky-50 text-sky-800">{problem.submissions.length} submissions</span>
                   {problem.file_url ? <a className="btn-muted" href={`/api/download/problems?key=${encodeURIComponent(problem.file_url)}`}>Download</a> : null}
+                  <form action={deleteProblem}>
+                    <input name="problem_id" type="hidden" value={problem.id} />
+                    <SubmitButton variant="muted">Delete</SubmitButton>
+                  </form>
                 </div>
               </div>
 
@@ -303,6 +320,10 @@ export default async function AdminDashboard({
                       <span className={submission.status === "graded" ? "status-pill border-emerald-200 bg-emerald-50 text-emerald-800" : "status-pill border-amber-200 bg-amber-50 text-amber-800"}>
                         {submission.status}
                       </span>
+                      <form action={deleteSubmission}>
+                        <input name="submission_id" type="hidden" value={submission.id} />
+                        <SubmitButton variant="muted">Delete</SubmitButton>
+                      </form>
                     </div>
                     <p className="mt-2 text-slate-700">
                       Score: {submission.score ?? "-"}/{problem.max_points}

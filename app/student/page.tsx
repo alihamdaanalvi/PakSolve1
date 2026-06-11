@@ -1,4 +1,4 @@
-import { submitSolution } from "@/app/actions/student";
+import { deleteSubmission, submitSolution } from "@/app/actions/student";
 import { DashboardShell } from "@/components/DashboardShell";
 import { FileInput } from "@/components/FileInput";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -9,7 +9,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/server";
 export default async function StudentDashboard({
   searchParams
 }: {
-  searchParams?: { submitted?: string; notice?: string; error?: string };
+  searchParams?: { submitted?: string; deleted?: string; notice?: string; error?: string };
 }) {
   const { user, profile } = await requireRole("student");
   const supabase = createSupabaseAdminClient();
@@ -28,7 +28,9 @@ export default async function StudentDashboard({
   const submittedCount = latestSubmissionByProblem.size;
   const gradedCount = (submissions ?? []).filter((submission) => submission.status === "graded").length;
   const notice =
-    searchParams?.submitted
+    searchParams?.deleted
+      ? "Submission deleted."
+      : searchParams?.submitted
       ? "Solution submitted. Your latest upload is waiting for mentor review."
       : searchParams?.notice === "already-submitted"
         ? "You already submitted this problem. Your dashboard now shows its status."
@@ -36,6 +38,8 @@ export default async function StudentDashboard({
   const error =
     searchParams?.error === "invalid-file"
       ? "Upload a PDF file up to 10MB."
+      : searchParams?.error === "graded-submission-locked"
+        ? "Graded submissions cannot be deleted."
       : searchParams?.error
         ? "The submission could not be saved. Please try again."
         : null;
@@ -120,6 +124,12 @@ export default async function StudentDashboard({
                       <FileInput name="file" />
                       <SubmitButton>Replace Solution</SubmitButton>
                     </form>
+                    {submission.status !== "graded" ? (
+                      <form action={deleteSubmission}>
+                        <input name="submission_id" type="hidden" value={submission.id} />
+                        <SubmitButton variant="muted">Delete Submission</SubmitButton>
+                      </form>
+                    ) : null}
                   </div>
                 ) : (
                   <form action={submitSolution} className="grid gap-2">

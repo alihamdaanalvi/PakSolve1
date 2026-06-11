@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { deleteR2Keys, storageKeyFor } from "@/lib/delete-content";
 import { isValidPdf, sanitizePdfFilename } from "@/lib/files";
 import { deleteFileFromR2, uploadFileToR2 } from "@/lib/r2";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -97,4 +98,38 @@ export async function submitSolution(formData: FormData) {
 
   revalidatePath("/student");
   redirect("/student?submitted=1");
+}
+
+export async function deleteSubmission(formData: FormData) {
+  const { user } = await requireRole("student");
+  const submissionId = String(formData.get("submission_id"));
+  const supabase = createSupabaseAdminClient();
+
+  const { data: submission, error: lookupError } = await supabase
+    .from("submissions")
+    .select("id,student_id,status,r2_key,file_url")
+    .eq("id", submissionId)
+    .eq("student_id", user.id)
+    .maybeSingle();
+
+  if (lookupError || !submission) {
+    redirect("/student?error=submission-not-found");
+  }
+
+  if (submission.status === "graded") {
+    redirect("/student?error=graded-submission-locked");
+  }
+
+  const { error: deleteError } = await supabase.from("submissions").delete().eq("id", submission.id);
+
+  if (deleteError) {
+    console.error("DB_DELETE_FAILED", deleteError);
+    redirect("/student?error=submission-delete-failed");
+  }
+
+  await deleteR2Keys([storageKeyFor(submission)]);
+
+  revalidatePath("/student");
+  revalidatePath("/profile");
+  redirect("/student?deleted=1");
 }

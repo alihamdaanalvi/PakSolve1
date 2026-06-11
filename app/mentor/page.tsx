@@ -1,4 +1,4 @@
-import { gradeSubmission, uploadProblem } from "@/app/actions/mentor";
+import { deleteProblem, deleteSubmission, gradeSubmission, uploadProblem } from "@/app/actions/mentor";
 import { DashboardShell } from "@/components/DashboardShell";
 import { FileInput } from "@/components/FileInput";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -37,7 +37,7 @@ type MentorProblem = {
 export default async function MentorDashboard({
   searchParams
 }: {
-  searchParams?: { uploaded?: string; error?: string };
+  searchParams?: { uploaded?: string; deleted?: string; error?: string };
 }) {
   const { user, profile } = await requireRole("mentor");
   const supabase = createSupabaseAdminClient();
@@ -109,6 +109,7 @@ export default async function MentorDashboard({
       </div>
 
       {searchParams?.uploaded ? <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-950">Problem uploaded and added to your dashboard.</div> : null}
+      {searchParams?.deleted ? <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-950">Problem deleted.</div> : null}
       {error ? <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-950">{error}</div> : null}
 
       <details className="surface mb-6 overflow-hidden" open={!problems?.length}>
@@ -183,6 +184,10 @@ export default async function MentorDashboard({
               </div>
               <div className="flex items-center gap-2">
                 {problem.file_url ? <a className="btn-muted" href={`/api/download/problems?key=${encodeURIComponent(problem.file_url)}`}>Download</a> : null}
+                <form action={deleteProblem}>
+                  <input name="problem_id" type="hidden" value={problem.id} />
+                  <SubmitButton variant="muted">Delete</SubmitButton>
+                </form>
               </div>
             </div>
             <p className="mb-4 text-sm leading-6 text-slate-700">{problem.description}</p>
@@ -194,7 +199,13 @@ export default async function MentorDashboard({
                       <p className="text-sm font-semibold">{submission.student?.name ?? "Student"}</p>
                       <p className="text-xs text-slate-500">{submission.student?.email ?? "No email"} | Submitted {new Date(submission.created_at).toLocaleString()}</p>
                     </div>
-                    <a className="btn-muted" href={`/api/download/submissions?key=${encodeURIComponent(submission.r2_key ?? submission.file_url)}`}>Download Submission</a>
+                    <div className="flex flex-wrap gap-2">
+                      <a className="btn-muted" href={`/api/download/submissions?key=${encodeURIComponent(submission.r2_key ?? submission.file_url)}`}>Download Submission</a>
+                      <form action={deleteSubmission}>
+                        <input name="submission_id" type="hidden" value={submission.id} />
+                        <SubmitButton variant="muted">Delete</SubmitButton>
+                      </form>
+                    </div>
                   </div>
                   {submission.status === "graded" ? (
                     <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">

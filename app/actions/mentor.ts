@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { deleteR2Keys, storageKeyFor } from "@/lib/delete-content";
 import { isValidPdf } from "@/lib/files";
 import { deleteFileFromR2, uploadFileToR2 } from "@/lib/r2";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -46,6 +47,84 @@ export async function uploadProblem(formData: FormData) {
 
   revalidatePath("/mentor");
   redirect("/mentor?uploaded=1");
+}
+
+export async function deleteProblem(formData: FormData) {
+  const { user } = await requireRole("mentor");
+  const problemId = String(formData.get("problem_id"));
+  const supabase = createSupabaseAdminClient();
+
+  const { data: problem, error: problemError } = await supabase
+    .from("problems")
+    .select("id,uploaded_by,file_url")
+    .eq("id", problemId)
+    .maybeSingle();
+
+  if (problemError || !problem || problem.uploaded_by !== user.id) {
+    redirect("/mentor?error=delete-forbidden");
+  }
+
+  const { data: submissions, error: submissionsError } = await supabase
+    .from("submissions")
+    .select("r2_key,file_url")
+    .eq("problem_id", problemId);
+
+  if (submissionsError) {
+    redirect("/mentor?error=delete-failed");
+  }
+
+  const { error: deleteError } = await supabase.from("problems").delete().eq("id", problemId).eq("uploaded_by", user.id);
+
+  if (deleteError) {
+    console.error("DB_DELETE_FAILED", deleteError);
+    redirect("/mentor?error=delete-failed");
+  }
+
+  await deleteR2Keys([storageKeyFor(problem), ...(submissions ?? []).map(storageKeyFor)]);
+
+  revalidatePath("/mentor");
+  revalidatePath("/student");
+  revalidatePath("/admin");
+  redirect("/mentor?deleted=1");
+}
+
+export async function deleteSubmission(formData: FormData) {
+  const { user } = await requireRole("mentor");
+  const submissionId = String(formData.get("submission_id"));
+  const supabase = createSupabaseAdminClient();
+
+  const { data: submission, error: lookupError } = await supabase
+    .from("submissions")
+    .select("id,problem_id,r2_key,file_url")
+    .eq("id", submissionId)
+    .maybeSingle();
+
+  if (lookupError || !submission) {
+    redirect("/mentor?error=delete-forbidden");
+  }
+
+  const { data: problem, error: problemError } = await supabase
+    .from("problems")
+    .select("uploaded_by")
+    .eq("id", submission.problem_id)
+    .maybeSingle();
+
+  if (problemError || !problem || problem.uploaded_by !== user.id) {
+    redirect("/mentor?error=delete-forbidden");
+  }
+
+  const { error: deleteError } = await supabase.from("submissions").delete().eq("id", submission.id);
+
+  if (deleteError) {
+    console.error("DB_DELETE_FAILED", deleteError);
+    redirect("/mentor?error=delete-failed");
+  }
+
+  await deleteR2Keys([storageKeyFor(submission)]);
+
+  revalidatePath("/mentor");
+  revalidatePath("/student");
+  revalidatePath("/admin");
 }
 
 export async function gradeSubmission(formData: FormData) {

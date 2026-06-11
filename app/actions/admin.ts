@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requireRole } from "@/lib/auth";
+import { deleteR2Keys, storageKeyFor } from "@/lib/delete-content";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { AcademicBatch, ProfileStatus, Subject } from "@/lib/types";
 
@@ -85,4 +87,71 @@ export async function updateBadge(formData: FormData) {
   await supabase.rpc("recalculate_all_badges");
   revalidatePath("/admin");
   revalidatePath("/leaderboard");
+}
+
+export async function deleteProblem(formData: FormData) {
+  await requireRole("admin");
+  const problemId = String(formData.get("problem_id"));
+  const supabase = createSupabaseAdminClient();
+
+  const { data: problem, error: problemError } = await supabase
+    .from("problems")
+    .select("id,file_url")
+    .eq("id", problemId)
+    .maybeSingle();
+
+  if (problemError || !problem) {
+    redirect("/admin?delete_error=problem-not-found");
+  }
+
+  const { data: submissions, error: submissionsError } = await supabase
+    .from("submissions")
+    .select("r2_key,file_url")
+    .eq("problem_id", problemId);
+
+  if (submissionsError) {
+    redirect("/admin?delete_error=submission-lookup-failed");
+  }
+
+  const { error: deleteError } = await supabase.from("problems").delete().eq("id", problemId);
+
+  if (deleteError) {
+    console.error("DB_DELETE_FAILED", deleteError);
+    redirect("/admin?delete_error=problem-delete-failed");
+  }
+
+  await deleteR2Keys([storageKeyFor(problem), ...(submissions ?? []).map(storageKeyFor)]);
+
+  revalidatePath("/admin");
+  revalidatePath("/mentor");
+  revalidatePath("/student");
+}
+
+export async function deleteSubmission(formData: FormData) {
+  await requireRole("admin");
+  const submissionId = String(formData.get("submission_id"));
+  const supabase = createSupabaseAdminClient();
+
+  const { data: submission, error: lookupError } = await supabase
+    .from("submissions")
+    .select("id,r2_key,file_url")
+    .eq("id", submissionId)
+    .maybeSingle();
+
+  if (lookupError || !submission) {
+    redirect("/admin?delete_error=submission-not-found");
+  }
+
+  const { error: deleteError } = await supabase.from("submissions").delete().eq("id", submission.id);
+
+  if (deleteError) {
+    console.error("DB_DELETE_FAILED", deleteError);
+    redirect("/admin?delete_error=submission-delete-failed");
+  }
+
+  await deleteR2Keys([storageKeyFor(submission)]);
+
+  revalidatePath("/admin");
+  revalidatePath("/mentor");
+  revalidatePath("/student");
 }
