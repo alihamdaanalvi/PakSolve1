@@ -25,6 +25,15 @@ function getR2Config() {
 }
 
 function createR2Client() {
+  console.log("R2_CONFIG", {
+    hasAccessKey: !!process.env.R2_ACCESS_KEY_ID,
+    hasSecretKey: !!process.env.R2_SECRET_ACCESS_KEY,
+    hasEndpoint: !!process.env.R2_ENDPOINT,
+    hasBucket: !!process.env.R2_BUCKET,
+    endpoint: process.env.R2_ENDPOINT,
+    bucket: process.env.R2_BUCKET
+  });
+
   const { accessKeyId, secretAccessKey, endpoint } = getR2Config();
 
   return new S3Client({

@@ -42,10 +42,19 @@ export async function submitSolution(formData: FormData) {
   const r2Key = `submissions/${problemId}/${user.id}/${timestamp}.pdf`;
   const originalFilename = sanitizePdfFilename(file.name);
 
+  console.log("UPLOAD_START", {
+    problemId,
+    userId: user.id,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type
+  });
+
   try {
     await uploadFileToR2({ key: r2Key, file });
+    console.log("R2_UPLOAD_SUCCESS", { key: r2Key });
   } catch (error) {
-    console.error(error);
+    console.error("R2_UPLOAD_FAILED", error);
     redirect("/student?error=upload-failed");
   }
 
@@ -67,14 +76,19 @@ export async function submitSolution(formData: FormData) {
     graded_at: null
   };
 
+  console.log("DB_WRITE_START", submissionPayload);
+
   const { error: upsertError } = existingSubmission
     ? await supabase.from("submissions").update(submissionPayload).eq("id", existingSubmission.id)
     : await supabase.from("submissions").insert(submissionPayload);
 
   if (upsertError) {
+    console.error("DB_WRITE_FAILED", upsertError);
     await deleteFileFromR2(r2Key).catch((error) => console.error(error));
     redirect("/student?error=submission-failed");
   }
+
+  console.log("DB_WRITE_SUCCESS");
 
   const previousKey = existingSubmission?.r2_key ?? existingSubmission?.file_url;
   if (previousKey && previousKey !== r2Key) {
