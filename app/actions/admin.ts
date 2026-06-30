@@ -67,22 +67,34 @@ export async function updateStudentProfile(formData: FormData) {
     ])
   ) as SubjectBatches;
   const subjects = SUBJECTS.map((subject) => subject.value).filter((subject) => subjectBatches[subject].length > 0);
+
+  if (!name || !subjects.length) {
+    redirect("/admin?profile_error=Select%20at%20least%20one%20subject%20batch.");
+  }
+
   const firstSubject = subjects[0] ?? "math";
   const batch = normalizeBatch(subjectBatches[firstSubject]?.[0]);
   const supabase = createSupabaseAdminClient();
 
-  await supabase
+  const { error } = await supabase
     .from("profiles")
     .update({
       name,
       batch,
-      subjects: subjects.length ? subjects : ["math"],
+      subjects,
       subject_batches: subjectBatches
     })
     .eq("user_id", userId)
     .eq("role", "student");
+
+  if (error) {
+    console.error("PROFILE_UPDATE_FAILED", error);
+    redirect(`/admin?profile_error=${encodeURIComponent(error.message)}`);
+  }
+
   revalidatePath("/admin");
   revalidatePath("/student");
+  redirect("/admin?profile_saved=1");
 }
 
 export async function deleteUser(formData: FormData) {

@@ -73,7 +73,7 @@ function StudentEditPanel({ user }: { user: Profile }) {
 export default async function AdminDashboard({
   searchParams
 }: {
-  searchParams?: { invite_link?: string; invite_email?: string; invite_error?: string; delete_error?: string };
+  searchParams?: { invite_link?: string; invite_email?: string; invite_error?: string; delete_error?: string; profile_error?: string; profile_saved?: string };
 }) {
   const { profile } = await requireRole("admin");
   const supabase = createSupabaseAdminClient();
@@ -122,6 +122,8 @@ export default async function AdminDashboard({
   const inviteLink = searchParams?.invite_link;
   const inviteEmail = searchParams?.invite_email;
   const inviteError = searchParams?.invite_error;
+  const profileError = searchParams?.profile_error;
+  const profileSaved = searchParams?.profile_saved;
 
   return (
     <DashboardShell profile={profile}>
@@ -150,6 +152,16 @@ export default async function AdminDashboard({
       {inviteError ? (
         <section className="mb-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
           {inviteError}
+        </section>
+      ) : null}
+      {profileError ? (
+        <section className="mb-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          Profile update failed: {profileError}
+        </section>
+      ) : null}
+      {profileSaved ? (
+        <section className="mb-6 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          Profile updated.
         </section>
       ) : null}
       {searchParams?.delete_error ? (
