@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { MAX_FILE_SIZE } from "@/lib/files";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 function readableFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
@@ -12,6 +13,16 @@ export function SolutionUploadForm({ problemId, label }: { problemId: string; la
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const supabase = createSupabaseBrowserClient();
+
+  async function readJson(response: Response) {
+    const text = await response.text();
+    try {
+      return text ? (JSON.parse(text) as { error?: string; [key: string]: unknown }) : {};
+    } catch {
+      return { error: text.slice(0, 180) };
+    }
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,26 +44,50 @@ export function SolutionUploadForm({ problemId, label }: { problemId: string; la
       return;
     }
 
-    const formData = new FormData();
-    formData.set("problem_id", problemId);
-    formData.set("file", file);
-
     setPending(true);
     try {
-      const response = await fetch("/api/submissions", {
+      const signedResponse = await fetch("/api/submissions/upload-url", {
         method: "POST",
-        body: formData
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          problemId,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type
+        })
       });
-      const text = await response.text();
-      let result: { error?: string } = {};
-      try {
-        result = text ? JSON.parse(text) : {};
-      } catch {
-        result = { error: text.slice(0, 180) };
+
+      const signed = await readJson(signedResponse);
+      if (!signedResponse.ok) {
+        setError(signed.error ?? `Upload setup failed with HTTP ${signedResponse.status}.`);
+        return;
       }
 
-      if (!response.ok) {
-        setError(result.error ?? `Upload failed with HTTP ${response.status}.`);
+      const upload = await supabase.storage
+        .from(String(signed.bucket))
+        .uploadToSignedUrl(String(signed.path), String(signed.token), file, {
+          contentType: "application/pdf"
+        });
+
+      if (upload.error) {
+        setError(`Storage upload failed: ${upload.error.message}`);
+        return;
+      }
+
+      const completeResponse = await fetch("/api/submissions/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          problemId,
+          key: signed.key,
+          fileName: file.name,
+          fileSize: file.size
+        })
+      });
+      const complete = await readJson(completeResponse);
+
+      if (!completeResponse.ok) {
+        setError(complete.error ?? `Upload save failed with HTTP ${completeResponse.status}.`);
         return;
       }
 

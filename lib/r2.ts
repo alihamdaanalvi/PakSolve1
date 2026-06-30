@@ -35,11 +35,11 @@ function hasR2Config() {
   );
 }
 
-function getSupabaseStorageBucket() {
+export function getSupabaseStorageBucket() {
   return process.env.SUPABASE_STORAGE_BUCKET || "paksolve-files";
 }
 
-async function ensureSupabaseStorageBucket() {
+export async function ensureSupabaseStorageBucket() {
   const supabase = createSupabaseAdminClient();
   const bucket = getSupabaseStorageBucket();
   const { data } = await supabase.storage.getBucket(bucket);
