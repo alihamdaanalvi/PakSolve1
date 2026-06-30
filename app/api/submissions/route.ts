@@ -12,8 +12,28 @@ function uploadError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeout!);
+  }
+}
+
 export async function POST(request: NextRequest) {
-  const { user, profile } = await getSessionProfile();
+  const { user, profile } = await withTimeout(getSessionProfile(), 10_000, "Session check").catch((error) => {
+    console.error("SUBMISSION_SESSION_FAILED", error);
+    return { user: null, profile: null };
+  });
 
   if (!user || !profile || profile.role !== "student" || profile.status !== "active") {
     return uploadError("Please sign in as an active student before uploading.", 401);
@@ -34,37 +54,51 @@ export async function POST(request: NextRequest) {
     return uploadError(`Upload a PDF file up to ${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB.`);
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { data: problem, error: problemError } = await supabase
-    .from("problems")
-    .select("id")
-    .eq("id", problemId)
-    .single();
-
-  if (problemError || !problem) {
-    return uploadError("This problem could not be found.", 404);
+  let supabase: ReturnType<typeof createSupabaseAdminClient>;
+  try {
+    supabase = createSupabaseAdminClient();
+  } catch (error) {
+    console.error("SUPABASE_CONFIG_FAILED", error);
+    return uploadError(`Server config error: ${errorMessage(error)}`, 500);
   }
 
-  const { data: existingSubmission, error: existingError } = await supabase
-    .from("submissions")
-    .select("id,r2_key,file_url")
-    .eq("problem_id", problemId)
-    .eq("student_id", user.id)
-    .maybeSingle();
+  const { data: problem, error: problemError } = await withTimeout(
+    Promise.resolve(supabase.from("problems").select("id").eq("id", problemId).single()),
+    10_000,
+    "Problem lookup"
+  );
+
+  if (problemError || !problem) {
+    console.error("PROBLEM_LOOKUP_FAILED", problemError);
+    return uploadError(problemError ? `Problem lookup failed: ${problemError.message}` : "This problem could not be found.", 404);
+  }
+
+  const { data: existingSubmission, error: existingError } = await withTimeout(
+    Promise.resolve(
+      supabase
+        .from("submissions")
+        .select("id,r2_key,file_url")
+        .eq("problem_id", problemId)
+        .eq("student_id", user.id)
+        .maybeSingle()
+    ),
+    10_000,
+    "Submission lookup"
+  );
 
   if (existingError) {
     console.error("SUBMISSION_LOOKUP_FAILED", existingError);
-    return uploadError("Your previous submission could not be checked. Please try again.", 500);
+    return uploadError(`Submission lookup failed: ${existingError.message}`, 500);
   }
 
   const timestamp = Date.now();
   const r2Key = `submissions/${problemId}/${user.id}/${timestamp}.pdf`;
 
   try {
-    await uploadFileToR2({ key: r2Key, file });
+    await withTimeout(uploadFileToR2({ key: r2Key, file }), 35_000, "R2 upload");
   } catch (error) {
     console.error("R2_UPLOAD_FAILED", error);
-    return uploadError("The PDF could not be uploaded. Please try again.", 502);
+    return uploadError(`R2 upload failed: ${errorMessage(error)}`, 502);
   }
 
   const submissionPayload = {
@@ -85,14 +119,20 @@ export async function POST(request: NextRequest) {
     graded_at: null
   };
 
-  const { error: writeError } = existingSubmission
-    ? await supabase.from("submissions").update(submissionPayload).eq("id", existingSubmission.id)
-    : await supabase.from("submissions").insert(submissionPayload);
+  const { error: writeError } = await withTimeout(
+    Promise.resolve(
+      existingSubmission
+        ? supabase.from("submissions").update(submissionPayload).eq("id", existingSubmission.id)
+        : supabase.from("submissions").insert(submissionPayload)
+    ),
+    10_000,
+    "Submission save"
+  );
 
   if (writeError) {
     console.error("SUBMISSION_WRITE_FAILED", writeError);
     await deleteFileFromR2(r2Key).catch((error) => console.error("R2_ROLLBACK_FAILED", error));
-    return uploadError("The uploaded PDF could not be saved. Please try again.", 500);
+    return uploadError(`Submission save failed: ${writeError.message}`, 500);
   }
 
   const previousKey = existingSubmission?.r2_key ?? existingSubmission?.file_url;

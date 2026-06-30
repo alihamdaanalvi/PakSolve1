@@ -5,6 +5,8 @@ import {
   S3Client,
   type GetObjectCommandOutput
 } from "@aws-sdk/client-s3";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type R2UploadInput = {
   key: string;
@@ -22,6 +24,34 @@ function getR2Config() {
   }
 
   return { accessKeyId, secretAccessKey, endpoint, bucket };
+}
+
+function hasR2Config() {
+  return Boolean(
+    process.env.R2_ACCESS_KEY_ID &&
+      process.env.R2_SECRET_ACCESS_KEY &&
+      process.env.R2_ENDPOINT &&
+      process.env.R2_BUCKET
+  );
+}
+
+function getSupabaseStorageBucket() {
+  return process.env.SUPABASE_STORAGE_BUCKET || "paksolve-files";
+}
+
+async function ensureSupabaseStorageBucket() {
+  const supabase = createSupabaseAdminClient();
+  const bucket = getSupabaseStorageBucket();
+  const { data } = await supabase.storage.getBucket(bucket);
+
+  if (!data) {
+    const { error } = await supabase.storage.createBucket(bucket, { public: false });
+    if (error && !error.message.toLowerCase().includes("already exists")) {
+      throw error;
+    }
+  }
+
+  return { supabase, bucket };
 }
 
 function createR2Client() {
@@ -43,11 +73,29 @@ function createR2Client() {
       accessKeyId,
       secretAccessKey
     },
-    forcePathStyle: true
+    forcePathStyle: true,
+    requestHandler: new NodeHttpHandler({
+      connectionTimeout: 10_000,
+      socketTimeout: 30_000
+    })
   });
 }
 
 export async function uploadFileToR2({ key, file }: R2UploadInput) {
+  if (!hasR2Config()) {
+    const { supabase, bucket } = await ensureSupabaseStorageBucket();
+    const { error } = await supabase.storage.from(bucket).upload(key, file, {
+      contentType: "application/pdf",
+      upsert: true
+    });
+
+    if (error) {
+      throw new Error(`Supabase Storage upload failed: ${error.message}`);
+    }
+
+    return { key };
+  }
+
   const { bucket } = getR2Config();
   const client = createR2Client();
 
@@ -69,6 +117,23 @@ export async function uploadFileToR2({ key, file }: R2UploadInput) {
 }
 
 export async function getFileFromR2(key: string): Promise<GetObjectCommandOutput> {
+  if (!hasR2Config()) {
+    const { supabase, bucket } = await ensureSupabaseStorageBucket();
+    const { data, error } = await supabase.storage.from(bucket).download(key);
+
+    if (error || !data) {
+      throw new Error(`Supabase Storage download failed: ${error?.message ?? "File not found"}`);
+    }
+
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    return {
+      ContentType: data.type || "application/pdf",
+      Body: {
+        transformToByteArray: async () => bytes
+      }
+    } as GetObjectCommandOutput;
+  }
+
   const { bucket } = getR2Config();
   const client = createR2Client();
 
@@ -85,6 +150,17 @@ export async function getFileFromR2(key: string): Promise<GetObjectCommandOutput
 }
 
 export async function deleteFileFromR2(key: string) {
+  if (!hasR2Config()) {
+    const { supabase, bucket } = await ensureSupabaseStorageBucket();
+    const { error } = await supabase.storage.from(bucket).remove([key]);
+
+    if (error) {
+      throw new Error(`Supabase Storage delete failed: ${error.message}`);
+    }
+
+    return;
+  }
+
   const { bucket } = getR2Config();
   const client = createR2Client();
 

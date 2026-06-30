@@ -43,10 +43,16 @@ export function SolutionUploadForm({ problemId, label }: { problemId: string; la
         method: "POST",
         body: formData
       });
-      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      const text = await response.text();
+      let result: { error?: string } = {};
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch {
+        result = { error: text.slice(0, 180) };
+      }
 
       if (!response.ok) {
-        setError(result.error ?? "The upload failed. Please try again.");
+        setError(result.error ?? `Upload failed with HTTP ${response.status}.`);
         return;
       }
 
