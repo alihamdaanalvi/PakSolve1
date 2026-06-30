@@ -36,6 +36,7 @@ create table if not exists public.profiles (
   badge_level text not null default 'Beginner',
   batch public.academic_batch not null default 'basic',
   subjects public.subject_area[] not null default array['math']::public.subject_area[],
+  subject_batches jsonb not null default '{"math":["basic"],"physics":[]}'::jsonb,
   avatar_url text,
   created_at timestamptz not null default now()
 );
@@ -55,7 +56,20 @@ create table if not exists public.problems (
 
 alter table public.profiles
   add column if not exists batch public.academic_batch not null default 'basic',
-  add column if not exists subjects public.subject_area[] not null default array['math']::public.subject_area[];
+  add column if not exists subjects public.subject_area[] not null default array['math']::public.subject_area[],
+  add column if not exists subject_batches jsonb not null default '{"math":["basic"],"physics":[]}'::jsonb;
+
+update public.profiles
+set subject_batches = jsonb_build_object(
+  'math',
+  case when 'math'::public.subject_area = any(subjects) then jsonb_build_array(batch::text) else '[]'::jsonb end,
+  'physics',
+  case when 'physics'::public.subject_area = any(subjects) then jsonb_build_array(batch::text) else '[]'::jsonb end
+)
+where subject_batches is null
+  or subject_batches = '{}'::jsonb
+  or not (subject_batches ? 'math')
+  or not (subject_batches ? 'physics');
 
 alter table public.problems
   add column if not exists subject public.subject_area not null default 'math',
@@ -171,7 +185,7 @@ as $$
 declare
   requested_role public.user_role := coalesce((new.raw_user_meta_data->>'role')::public.user_role, 'student');
 begin
-  insert into public.profiles (user_id, name, email, role, status, batch, subjects)
+  insert into public.profiles (user_id, name, email, role, status, batch, subjects, subject_batches)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
@@ -183,7 +197,8 @@ begin
       when jsonb_typeof(new.raw_user_meta_data->'subjects') = 'array'
       then array(select jsonb_array_elements_text(new.raw_user_meta_data->'subjects')::public.subject_area)
       else array['math']::public.subject_area[]
-    end
+    end,
+    coalesce(new.raw_user_meta_data->'subject_batches', '{"math":["basic"],"physics":[]}'::jsonb)
   )
   on conflict (user_id) do update set
     email = excluded.email,
@@ -191,7 +206,8 @@ begin
     role = excluded.role,
     status = excluded.status,
     batch = excluded.batch,
-    subjects = excluded.subjects;
+    subjects = excluded.subjects,
+    subject_batches = excluded.subject_batches;
   return new;
 end;
 $$;

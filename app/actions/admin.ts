@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { deleteR2Keys, storageKeyFor } from "@/lib/delete-content";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import type { AcademicBatch, ProfileStatus, Subject } from "@/lib/types";
+import { BATCHES, SUBJECTS, normalizeBatch } from "@/lib/academics";
+import type { AcademicBatch, ProfileStatus, Subject, SubjectBatches } from "@/lib/types";
 
 export async function inviteMentor(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
@@ -56,13 +57,28 @@ export async function setProfileStatus(formData: FormData) {
 export async function updateStudentProfile(formData: FormData) {
   const userId = String(formData.get("user_id"));
   const name = String(formData.get("name") || "").trim();
-  const batch = String(formData.get("batch") || "basic") as AcademicBatch;
-  const subjects = formData.getAll("subjects").map(String).filter(Boolean) as Subject[];
+  const subjectBatches = Object.fromEntries(
+    SUBJECTS.map((subject) => [
+      subject.value,
+      formData
+        .getAll(`${subject.value}_batches`)
+        .map(String)
+        .filter((batch): batch is AcademicBatch => BATCHES.some((item) => item.value === batch))
+    ])
+  ) as SubjectBatches;
+  const subjects = SUBJECTS.map((subject) => subject.value).filter((subject) => subjectBatches[subject].length > 0);
+  const firstSubject = subjects[0] ?? "math";
+  const batch = normalizeBatch(subjectBatches[firstSubject]?.[0]);
   const supabase = createSupabaseAdminClient();
 
   await supabase
     .from("profiles")
-    .update({ name, batch, subjects: subjects.length ? subjects : ["math"] })
+    .update({
+      name,
+      batch,
+      subjects: subjects.length ? subjects : ["math"],
+      subject_batches: subjectBatches
+    })
     .eq("user_id", userId)
     .eq("role", "student");
   revalidatePath("/admin");
@@ -120,7 +136,9 @@ export async function deleteProblem(formData: FormData) {
     redirect("/admin?delete_error=problem-delete-failed");
   }
 
-  await deleteR2Keys([storageKeyFor(problem), ...(submissions ?? []).map(storageKeyFor)]);
+  await deleteR2Keys([storageKeyFor(problem), ...(submissions ?? []).map(storageKeyFor)]).catch((error) =>
+    console.error("R2_DELETE_FAILED", error)
+  );
 
   revalidatePath("/admin");
   revalidatePath("/mentor");
@@ -149,7 +167,7 @@ export async function deleteSubmission(formData: FormData) {
     redirect("/admin?delete_error=submission-delete-failed");
   }
 
-  await deleteR2Keys([storageKeyFor(submission)]);
+  await deleteR2Keys([storageKeyFor(submission)]).catch((error) => console.error("R2_DELETE_FAILED", error));
 
   revalidatePath("/admin");
   revalidatePath("/mentor");

@@ -127,7 +127,7 @@ export async function deleteSubmission(formData: FormData) {
     redirect("/student?error=submission-delete-failed");
   }
 
-  await deleteR2Keys([storageKeyFor(submission)]);
+  await deleteR2Keys([storageKeyFor(submission)]).catch((error) => console.error("R2_DELETE_FAILED", error));
 
   revalidatePath("/student");
   revalidatePath("/profile");

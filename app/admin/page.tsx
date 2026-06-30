@@ -10,9 +10,9 @@ import {
   updateStudentProfile
 } from "@/app/actions/admin";
 import { requireRole } from "@/lib/auth";
-import { BATCHES, SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjects } from "@/lib/academics";
+import { BATCHES, SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjectBatches } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import type { Problem, Profile, Submission, Subject } from "@/lib/types";
+import type { Problem, Profile, Submission } from "@/lib/types";
 import { Pencil } from "lucide-react";
 
 type AdminProblem = Problem & {
@@ -26,8 +26,7 @@ type AdminSubmission = Submission & {
 };
 
 function StudentEditPanel({ user }: { user: Profile }) {
-  const batch = normalizeBatch(user.batch);
-  const subjects = normalizeSubjects(user.subjects);
+  const subjectBatches = normalizeSubjectBatches(user.subject_batches, user.batch, user.subjects);
 
   return (
     <details className="group">
@@ -41,22 +40,27 @@ function StudentEditPanel({ user }: { user: Profile }) {
           Name
           <input className="form-field mt-1" name="name" required defaultValue={user.name} />
         </label>
-        <label className="text-xs font-semibold text-slate-600">
-          Batch
-          <select className="form-field mt-1" name="batch" defaultValue={batch}>
-            {BATCHES.map((item) => (
-              <option key={item.value} value={item.value}>{item.label}</option>
-            ))}
-          </select>
-        </label>
         <fieldset>
-          <legend className="mb-2 text-xs font-semibold text-slate-600">Subjects</legend>
-          <div className="flex gap-3">
+          <legend className="mb-2 text-xs font-semibold text-slate-600">Batches by subject</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
             {SUBJECTS.map((subject) => (
-              <label key={subject.value} className="flex items-center gap-1 text-xs font-semibold text-slate-600">
-                <input name="subjects" type="checkbox" value={subject.value} defaultChecked={subjects.includes(subject.value as Subject)} />
-                {subject.label}
-              </label>
+              <div key={subject.value} className="rounded-md border border-line bg-white p-3">
+                <p className="mb-2 text-sm font-semibold">{subject.label}</p>
+                <div className="grid gap-2">
+                  {BATCHES.map((batch) => (
+                    <label key={batch.value} className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                      <input
+                        className="h-4 w-4 accent-sky-700"
+                        name={`${subject.value}_batches`}
+                        type="checkbox"
+                        value={batch.value}
+                        defaultChecked={subjectBatches[subject.value].includes(batch.value)}
+                      />
+                      {batch.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </fieldset>
@@ -180,10 +184,13 @@ export default async function AdminDashboard({
                   <td className="table-cell">
                     <p className="font-medium">{user.name}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="batch-pill">{formatBatch(normalizeBatch(user.batch))}</span>
-                      {normalizeSubjects(user.subjects).map((subject) => (
-                        <span className="category-pill" key={subject}>{formatSubject(subject)}</span>
-                      ))}
+                      {SUBJECTS.flatMap((subject) =>
+                        normalizeSubjectBatches(user.subject_batches, user.batch, user.subjects)[subject.value].map((batch) => (
+                          <span className="batch-pill" key={`${subject.value}-${batch}`}>
+                            {formatSubject(subject.value)}: {formatBatch(batch)}
+                          </span>
+                        ))
+                      )}
                     </div>
                   </td>
                   <td className="table-cell">{user.email}</td>
@@ -236,8 +243,7 @@ export default async function AdminDashboard({
             </thead>
             <tbody>
               {users?.map((user) => {
-                const studentBatch = normalizeBatch(user.batch);
-                const studentSubjects = normalizeSubjects(user.subjects);
+                const studentSubjectBatches = normalizeSubjectBatches(user.subject_batches, user.batch, user.subjects);
 
                 return (
                   <tr key={user.id} className="border-t border-line">
@@ -245,13 +251,23 @@ export default async function AdminDashboard({
                     <td className="table-cell capitalize">{user.role}</td>
                     <td className="table-cell capitalize">{user.status}</td>
                     <td className="table-cell">
-                      {user.role === "student" ? <span className="batch-pill">{formatBatch(studentBatch)}</span> : "-"}
+                      {user.role === "student" ? (
+                        <div className="flex flex-wrap gap-2">
+                          {SUBJECTS.flatMap((subject) =>
+                            studentSubjectBatches[subject.value].map((batch) => (
+                              <span className="batch-pill" key={`${subject.value}-${batch}`}>
+                                {formatSubject(subject.value)}: {formatBatch(batch)}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      ) : "-"}
                     </td>
                     <td className="table-cell">
                       {user.role === "student" ? (
                         <div className="flex flex-wrap gap-2">
-                          {studentSubjects.map((subject) => (
-                            <span className="category-pill" key={subject}>{formatSubject(subject)}</span>
+                          {SUBJECTS.filter((subject) => studentSubjectBatches[subject.value].length > 0).map((subject) => (
+                            <span className="category-pill" key={subject.value}>{formatSubject(subject.value)}</span>
                           ))}
                         </div>
                       ) : "-"}
@@ -360,7 +376,7 @@ export default async function AdminDashboard({
               <div key={submission.id} className="rounded-md border border-line bg-panel p-3 text-sm">
                 <p className="font-medium">{submission.student?.name ?? "Student"} submitted {submission.problem?.title ?? "a problem"}</p>
                 <p className="mt-1 text-slate-600">Score: {submission.score ?? "-"}/{submission.problem?.max_points ?? "-"}</p>
-                <p className="mt-1 capitalize text-slate-500">{submission.status} · {new Date(submission.created_at).toLocaleString()}</p>
+                <p className="mt-1 capitalize text-slate-500">{submission.status} | {new Date(submission.created_at).toLocaleString()}</p>
               </div>
             ))}
             {!submissions?.length ? <p className="text-sm text-slate-500">No submissions yet.</p> : null}

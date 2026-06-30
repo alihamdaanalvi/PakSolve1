@@ -67,22 +67,27 @@ export function AuthForm({ mode, status }: { mode: "login" | "signup"; status?: 
             Name
             <input className="form-field mt-1" name="name" required />
           </label>
-          <label className="mb-4 block text-sm font-medium">
-            Batch
-            <select className="form-field mt-1" name="batch" required>
-              {BATCHES.map((batch) => (
-                <option key={batch.value} value={batch.value}>{batch.label}</option>
-              ))}
-            </select>
-          </label>
           <fieldset className="mb-4">
-            <legend className="mb-2 text-sm font-medium">Subjects</legend>
-            <div className="grid grid-cols-2 gap-2">
+            <legend className="mb-2 text-sm font-medium">Batches by subject</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
               {SUBJECTS.map((subject) => (
-                <label key={subject.value} className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-sm font-medium">
-                  <input className="h-4 w-4 accent-sky-700" name="subjects" type="checkbox" value={subject.value} defaultChecked={subject.value === "math"} />
-                  {subject.label}
-                </label>
+                <div key={subject.value} className="rounded-md border border-line bg-panel p-3">
+                  <p className="mb-2 text-sm font-semibold">{subject.label}</p>
+                  <div className="grid gap-2">
+                    {BATCHES.map((batch) => (
+                      <label key={batch.value} className="flex items-center gap-2 text-sm font-medium">
+                        <input
+                          className="h-4 w-4 accent-sky-700"
+                          name={`${subject.value}_batches`}
+                          type="checkbox"
+                          value={batch.value}
+                          defaultChecked={subject.value === "math" && batch.value === "basic"}
+                        />
+                        {batch.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </fieldset>

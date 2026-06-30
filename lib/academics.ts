@@ -1,4 +1,4 @@
-import type { AcademicBatch, Subject } from "@/lib/types";
+import type { AcademicBatch, Subject, SubjectBatches } from "@/lib/types";
 
 export const BATCHES: Array<{ value: AcademicBatch; label: string }> = [
   { value: "basic", label: "Basic" },
@@ -29,4 +29,40 @@ export function normalizeSubjects(subjects?: string[] | null): Subject[] {
   );
 
   return validSubjects.length ? validSubjects : ["math"];
+}
+
+export function normalizeSubjectBatches(
+  subjectBatches?: Partial<Record<string, string[]>> | null,
+  fallbackBatch?: string | null,
+  fallbackSubjects?: string[] | null
+): SubjectBatches {
+  const normalized: SubjectBatches = {
+    physics: [],
+    math: []
+  };
+
+  for (const subject of SUBJECTS) {
+    const rawBatches = Array.isArray(subjectBatches?.[subject.value]) ? subjectBatches?.[subject.value] ?? [] : [];
+    normalized[subject.value] = rawBatches
+      .map((batch) => normalizeBatch(batch))
+      .filter((batch, index, batches) => batches.indexOf(batch) === index);
+  }
+
+  const hasAnyBatch = SUBJECTS.some((subject) => normalized[subject.value].length > 0);
+  if (hasAnyBatch) {
+    return normalized;
+  }
+
+  const batch = normalizeBatch(fallbackBatch);
+  for (const subject of normalizeSubjects(fallbackSubjects)) {
+    normalized[subject] = [batch];
+  }
+
+  return normalized;
+}
+
+export function subjectBatchPairs(subjectBatches: SubjectBatches) {
+  return SUBJECTS.flatMap((subject) =>
+    subjectBatches[subject.value].map((batch) => ({ subject: subject.value, batch }))
+  );
 }

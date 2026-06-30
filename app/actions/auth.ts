@@ -1,18 +1,29 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import type { AcademicBatch, Subject } from "@/lib/types";
+import { BATCHES, SUBJECTS, normalizeBatch } from "@/lib/academics";
+import type { AcademicBatch, SubjectBatches } from "@/lib/types";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function registerStudent(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const name = String(formData.get("name") || "").trim();
-  const batch = String(formData.get("batch") || "basic") as AcademicBatch;
-  const subjects = formData.getAll("subjects").map(String).filter(Boolean) as Subject[];
+  const subjectBatches = Object.fromEntries(
+    SUBJECTS.map((subject) => [
+      subject.value,
+      formData
+        .getAll(`${subject.value}_batches`)
+        .map(String)
+        .filter((batch): batch is AcademicBatch => BATCHES.some((item) => item.value === batch))
+    ])
+  ) as SubjectBatches;
+  const subjects = SUBJECTS.map((subject) => subject.value).filter((subject) => subjectBatches[subject].length > 0);
+  const firstSubject = subjects[0] ?? "math";
+  const batch = normalizeBatch(subjectBatches[firstSubject]?.[0]);
 
   if (!email || !password || !name || !subjects.length) {
-    return { error: "Name, email, password, batch, and at least one subject are required." };
+    return { error: "Name, email, password, and at least one subject batch are required." };
   }
 
   if (password.length < 6) {
@@ -24,7 +35,7 @@ export async function registerStudent(formData: FormData) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { name, role: "student", batch, subjects }
+    user_metadata: { name, role: "student", batch, subjects, subject_batches: subjectBatches }
   });
 
   if (error) {
@@ -44,7 +55,8 @@ export async function registerStudent(formData: FormData) {
     total_points: 0,
     badge_level: "Beginner",
     batch,
-    subjects
+    subjects,
+    subject_batches: subjectBatches
   });
 
   return { success: "Registration submitted. An admin must approve your account before you can sign in." };

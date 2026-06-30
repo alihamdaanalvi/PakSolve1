@@ -3,6 +3,7 @@ export type ProfileStatus = "pending" | "active" | "rejected";
 export type SubmissionStatus = "pending" | "graded";
 export type AcademicBatch = "basic" | "intermediate" | "advanced";
 export type Subject = "physics" | "math";
+export type SubjectBatches = Record<Subject, AcademicBatch[]>;
 
 export type Profile = {
   id: string;
@@ -15,6 +16,7 @@ export type Profile = {
   badge_level: string;
   batch: AcademicBatch;
   subjects: Subject[];
+  subject_batches: SubjectBatches | null;
   avatar_url: string | null;
   created_at: string;
 };

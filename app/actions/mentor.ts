@@ -80,7 +80,9 @@ export async function deleteProblem(formData: FormData) {
     redirect("/mentor?error=delete-failed");
   }
 
-  await deleteR2Keys([storageKeyFor(problem), ...(submissions ?? []).map(storageKeyFor)]);
+  await deleteR2Keys([storageKeyFor(problem), ...(submissions ?? []).map(storageKeyFor)]).catch((error) =>
+    console.error("R2_DELETE_FAILED", error)
+  );
 
   revalidatePath("/mentor");
   revalidatePath("/student");
@@ -120,11 +122,12 @@ export async function deleteSubmission(formData: FormData) {
     redirect("/mentor?error=delete-failed");
   }
 
-  await deleteR2Keys([storageKeyFor(submission)]);
+  await deleteR2Keys([storageKeyFor(submission)]).catch((error) => console.error("R2_DELETE_FAILED", error));
 
   revalidatePath("/mentor");
   revalidatePath("/student");
   revalidatePath("/admin");
+  redirect("/mentor?deleted=1");
 }
 
 export async function gradeSubmission(formData: FormData) {

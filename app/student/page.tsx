@@ -1,9 +1,9 @@
-import { deleteSubmission, submitSolution } from "@/app/actions/student";
+import { deleteSubmission } from "@/app/actions/student";
 import { DashboardShell } from "@/components/DashboardShell";
-import { FileInput } from "@/components/FileInput";
+import { SolutionUploadForm } from "@/components/SolutionUploadForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireRole } from "@/lib/auth";
-import { SUBJECTS, formatBatch, formatSubject, normalizeBatch, normalizeSubjects } from "@/lib/academics";
+import { SUBJECTS, formatBatch, formatSubject, normalizeSubjectBatches, subjectBatchPairs } from "@/lib/academics";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 export default async function StudentDashboard({
@@ -13,12 +13,16 @@ export default async function StudentDashboard({
 }) {
   const { user, profile } = await requireRole("student");
   const supabase = createSupabaseAdminClient();
-  const assignedBatch = normalizeBatch(profile.batch);
-  const assignedSubjects = normalizeSubjects(profile.subjects);
-  const [{ data: problems }, { data: submissions }] = await Promise.all([
-    supabase.from("problems").select("*").eq("batch", assignedBatch).in("subject", assignedSubjects).order("deadline"),
+  const assignedSubjectBatches = normalizeSubjectBatches(profile.subject_batches, profile.batch, profile.subjects);
+  const assignedPairs = subjectBatchPairs(assignedSubjectBatches);
+  const assignedSubjects = SUBJECTS.map((subject) => subject.value).filter((subject) => assignedSubjectBatches[subject].length > 0);
+  const [{ data: allProblems }, { data: submissions }] = await Promise.all([
+    supabase.from("problems").select("*").in("subject", assignedSubjects.length ? assignedSubjects : ["math"]).order("deadline"),
     supabase.from("submissions").select("*, problems(title,max_points)").eq("student_id", user.id).order("created_at", { ascending: false })
   ]);
+  const problems = (allProblems ?? []).filter((problem) =>
+    assignedPairs.some((assignment) => assignment.subject === problem.subject && assignment.batch === problem.batch)
+  );
   const latestSubmissionByProblem = new Map<string, NonNullable<typeof submissions>[number]>();
   for (const submission of submissions ?? []) {
     if (!latestSubmissionByProblem.has(submission.problem_id)) {
@@ -51,7 +55,9 @@ export default async function StudentDashboard({
           <p className="eyebrow">Student workspace</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Problems to solve</h1>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="batch-pill">{formatBatch(assignedBatch)}</span>
+            {assignedPairs.map((assignment) => (
+              <span className="batch-pill" key={`${assignment.subject}-${assignment.batch}`}>{formatSubject(assignment.subject)}: {formatBatch(assignment.batch)}</span>
+            ))}
             {assignedSubjects.map((subject) => (
               <span className="category-pill" key={subject}>{formatSubject(subject)}</span>
             ))}
@@ -82,7 +88,7 @@ export default async function StudentDashboard({
           <div key={subject.value} className="surface overflow-hidden">
             <div className="border-b border-line bg-white p-4">
               <h2 className="text-lg font-bold">{subject.label}</h2>
-              <p className="text-sm text-slate-500">{subjectProblems.length} {formatBatch(assignedBatch).toLowerCase()} problems</p>
+              <p className="text-sm text-slate-500">{subjectProblems.length} assigned problems</p>
             </div>
             <div className="grid gap-0 divide-y divide-line">
         {subjectProblems.map((problem) => {
@@ -119,11 +125,7 @@ export default async function StudentDashboard({
                       Submitted {new Date(submission.created_at).toLocaleString()}
                       {submission.status === "graded" ? <span className="ml-2 font-semibold">Score: {submission.score ?? 0}/{problem.max_points}</span> : <span className="ml-2 font-semibold">Waiting for grading</span>}
                     </div>
-                    <form action={submitSolution} className="grid gap-2">
-                      <input name="problem_id" type="hidden" value={problem.id} />
-                      <FileInput name="file" />
-                      <SubmitButton>Replace Solution</SubmitButton>
-                    </form>
+                    <SolutionUploadForm problemId={problem.id} label="Replace Solution" />
                     {submission.status !== "graded" ? (
                       <form action={deleteSubmission}>
                         <input name="submission_id" type="hidden" value={submission.id} />
@@ -132,11 +134,7 @@ export default async function StudentDashboard({
                     ) : null}
                   </div>
                 ) : (
-                  <form action={submitSolution} className="grid gap-2">
-                    <input name="problem_id" type="hidden" value={problem.id} />
-                    <FileInput name="file" />
-                    <SubmitButton>Submit Solution</SubmitButton>
-                  </form>
+                  <SolutionUploadForm problemId={problem.id} label="Submit Solution" />
                 )}
               </div>
             </div>
