@@ -53,6 +53,18 @@ export function normalizeSubjectBatches(
     return normalized;
   }
 
+  for (const rawSubject of fallbackSubjects ?? []) {
+    const [subject, batch] = rawSubject.split(":");
+    if (SUBJECTS.some((item) => item.value === subject) && BATCHES.some((item) => item.value === batch)) {
+      normalized[subject as Subject].push(batch as AcademicBatch);
+    }
+  }
+
+  const hasEncodedBatch = SUBJECTS.some((subject) => normalized[subject.value].length > 0);
+  if (hasEncodedBatch) {
+    return normalized;
+  }
+
   const batch = normalizeBatch(fallbackBatch);
   for (const subject of normalizeSubjects(fallbackSubjects)) {
     normalized[subject] = [batch];
